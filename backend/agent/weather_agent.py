@@ -51,7 +51,7 @@ class WeatherAgent:
 
     async def connect(self) -> None:
         """Start the MCP server, discover tools, build Gemini declarations."""
-        await self._mcp.connect()
+        await self._mcp.connect_remote_mcp_server(url="https://open-meteo.caseyjhand.com/mcp")
         tools = await self._mcp.discover_tools()
         self._declarations = tools_to_function_declarations(tools)
 

@@ -12,7 +12,9 @@ from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +30,13 @@ class MCPClient:
         await client.disconnect()
     """
 
-    def __init__(self, server_params: StdioServerParameters):
+    def __init__(self, server_params: Optional[StdioServerParameters] = None):
         self._params = server_params
         self.session: ClientSession | None = None
         self._tools: list[Tool] | None = None
         self._exit_stack = AsyncExitStack()
 
-    async def connect(self) -> None:
+    async def connect_local_mcp_server(self) -> None:
         """Spawn the server subprocess and perform the MCP handshake."""
         logger.info(
             "Connecting to MCP server: %s %s",
@@ -49,7 +51,24 @@ class MCPClient:
         )
         await session.initialize()
         self.session = session
-        self._tools = None  # fresh connection -> re-discover
+        self._tools = None
+
+    async def connect_remote_mcp_server(self, url: str) -> None:
+        """Spawn the server subprocess and perform the MCP handshake."""
+        logger.info(
+            "Connecting to MCP server: %s %s",
+            self._params.command,
+            " ".join(self._params.args),
+        )
+        read, write, _ = await self._exit_stack.enter_async_context(
+            streamablehttp_client(url=url)
+        )
+        session = await self._exit_stack.enter_async_context(
+            ClientSession(read, write)
+        )
+        await session.initialize()
+        self.session = session
+        self._tools = None
 
     async def disconnect(self) -> None:
         """Close the session and terminate the server subprocess."""
@@ -57,12 +76,12 @@ class MCPClient:
         self.session = None
         self._tools = None
 
-    async def __aenter__(self) -> "MCPClient":
-        await self.connect()
-        return self
-
-    async def __aexit__(self, *exc_info) -> None:
-        await self.disconnect()
+    # async def __aenter__(self) -> "MCPClient":
+    #     await self.connect_local_mcp_server()
+    #     return self
+    #
+    # async def __aexit__(self, *exc_info) -> None:
+    #     await self.disconnect()
 
     async def discover_tools(self) -> list[Tool]:
         """Fetch tools/list once and cache the result for this connection."""

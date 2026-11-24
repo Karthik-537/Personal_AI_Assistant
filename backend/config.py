@@ -21,7 +21,7 @@ class Settings:
     max_tool_rounds: int = 10
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if not api_key or api_key == "your_api_key_here":
             raise RuntimeError(
