@@ -1,134 +1,184 @@
-"""Weather agent: Gemini function-calling loop over MCP tools.
-
-The agent owns two things:
-  1. The Gemini conversation (contents history, multi-turn).
-  2. The MCP connection to the weather server (tool discovery + execution).
-
-Loop per user message:
-    prompt + tool declarations -> Gemini
-    Gemini returns function_call(s) -> MCP tools/call -> function_response
-    -> Gemini ... until it returns plain text (the answer).
-"""
-
-import json
 import logging
-import sys
-from pathlib import Path
 
-from google import genai
-from google.genai import types
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
+
+from langgraph.graph import (
+    StateGraph,
+    START,
+    END,
+    MessagesState
+)
+
+from langgraph.prebuilt import ToolNode, tools_condition
+
 from mcp import StdioServerParameters
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.config import Settings
 from backend.mcp_client.client import MCPClient
-from backend.mcp_client.tool_executor import execute_tool
-from backend.mcp_client.tool_manager import tools_to_function_declarations
+
+from backend.mcp_client.langchain_adapter import (
+    convert_mcp_tools_to_langchain
+)
+
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_ROUNDS = 10
-
 
 class WeatherAgent:
+
     def __init__(self, settings: Settings):
+
         self._settings = settings
-        self._client = genai.Client(api_key=settings.gemini_api_key)
+
+        # 1. Initialize Gemini through LangChain
+        self._llm = ChatGoogleGenerativeAI(
+            model=settings.gemini_model,
+            google_api_key=settings.gemini_api_key,
+            temperature=0.2
+        )
+
+        # 2. Initialize existing MCP client
         self._mcp = MCPClient(
             StdioServerParameters(
-                command=sys.executable,
-                args=list(settings.weather_server_args),
-                cwd=str(PROJECT_ROOT),
+                command="python",
+                args=list(settings.weather_server_args)
             )
         )
-        self._declarations: list[types.FunctionDeclaration] = []
-        self._history: list[types.Content] = []
+
+        # 3. Initialize agent state
+        self._history = []
+
+        # 4. Graph and tools will be initialized after MCP connection
+        self._tools = []
+        self._llm_with_tools = None
+        self._graph = None
 
     async def connect(self) -> None:
-        """Connect to the weather MCP server and build Gemini declarations.
+        """Connect to MCP and build the LangGraph workflow."""
 
-        Uses WEATHER_MCP_URL (remote streamable-HTTP) when configured,
-        otherwise spawns the local stdio server.
-        """
-        if self._settings.weather_mcp_url:
-            await self._mcp.connect_remote_mcp_server(self._settings.weather_mcp_url)
-        else:
-            await self._mcp.connect_local_mcp_server()
-        tools = await self._mcp.discover_tools()
-        self._declarations = tools_to_function_declarations(tools)
+        # Connect to weather MCP server
+        await self._mcp.connect_remote_mcp_server(
+            url=self._settings.weather_mcp_url
+        )
 
-    async def close(self) -> None:
-        await self._mcp.disconnect()
+        # Discover MCP tools
+        mcp_tools = await self._mcp.discover_tools()
+
+        logger.info(
+            "Discovered %s MCP tools",
+            len(mcp_tools)
+        )
+
+        # Convert MCP tools into LangChain tools
+        self._tools = convert_mcp_tools_to_langchain(
+            mcp_tools,
+            self._mcp.session
+        )
+
+        # Bind tools to Gemini
+        self._llm_with_tools = self._llm.bind_tools(
+            self._tools
+        )
+
+        # Build LangGraph
+        self._build_graph()
+
+    def _build_graph(self) -> None:
+        """Construct and compile the LangGraph workflow."""
+
+        # Assistant node
+        def assistant(state: MessagesState):
+
+            system_message = SystemMessage(
+                content="""
+                You are an intelligent weather assistant.
+
+                Use the available weather tools to answer
+                user questions about weather.
+
+                Instructions:
+                1. Call appropriate MCP tools when necessary.
+                2. Never invent weather information.
+                3. Use tool results to generate your answer.
+                4. If a tool fails, explain the failure.
+                5. Provide clear and concise answers.
+                """
+            )
+
+            response = self._llm_with_tools.invoke(
+                [system_message] + state["messages"]
+            )
+
+            return {
+                "messages": [response]
+            }
+
+        # Create graph
+        builder = StateGraph(MessagesState)
+
+        # Register nodes
+        builder.add_node("assistant", assistant)
+
+        builder.add_node(
+            "tools",
+            ToolNode(
+                self._tools,
+                handle_tool_errors=True
+            )
+        )
+
+        # Define edges
+        builder.add_edge(START, "assistant")
+
+        builder.add_conditional_edges(
+            "assistant",
+            tools_condition,
+            {
+                "tools": "tools",
+                END: END
+            }
+        )
+
+        builder.add_edge("tools", "assistant")
+
+        # Compile graph
+        self._graph = builder.compile()
 
     async def chat(self, message: str) -> str:
-        """Send a user message; returns Gemini's final text answer."""
-        self._history.append(
-            types.Content(role="user", parts=[types.Part.from_text(text=message)])
-        )
+        """Process a user message through LangGraph."""
 
-        config = types.GenerateContentConfig(
-            tools=[types.Tool(function_declarations=self._declarations)]
-        )
-
-        for round_num in range(self._settings.max_tool_rounds):
-            response = await self._client.aio.models.generate_content(
-                model=self._settings.gemini_model,
-                contents=self._history,
-                config=config,
-            )
-
-            if not response.candidates:
-                raise RuntimeError(
-                    f"Gemini returned no candidates "
-                    f"(finish_reason={getattr(response, 'prompt_feedback', None)})"
-                )
-
-            candidate = response.candidates[0]
-            model_content = candidate.content
-            if model_content is None:
-                raise RuntimeError("Gemini returned no content")
-
-            # model_content already contains any text AND function_call parts —
-            # appending it once records the full model turn in history.
-            self._history.append(model_content)
-
-            function_calls = [
-                p.function_call for p in (model_content.parts or []) if p.function_call
-            ]
-            if not function_calls:
-                # Extract text safely — response.text raises if absent.
-                texts = [
-                    p.text
-                    for p in (model_content.parts or [])
-                    if getattr(p, "text", None)
-                ]
-                return "".join(texts)
-
-            # Execute every requested tool call, then feed results back.
-            response_parts = []
-            for fc in function_calls:
-                logger.info("Gemini requests tool: %s(%s)", fc.name, fc.args)
-                try:
-                    result_json = await execute_tool(
-                        self._mcp.session, fc.name, dict(fc.args or {})
-                    )
-                except Exception as exc:  # noqa: BLE001 — report to Gemini, keep loop alive
-                    logger.error("Tool %s failed: %s", fc.name, exc)
-                    result_json = json.dumps({"error": str(exc)})
-                response_parts.append(
-                    types.Part.from_function_response(
-                        name=fc.name,
-                        response={"result": json.loads(result_json)},
-                    )
-                )
-
-            self._history.append(
-                types.Content(role="user", parts=response_parts)
-            )
-        else:
+        if self._graph is None:
             raise RuntimeError(
-                f"Exceeded {self._settings.max_tool_rounds} tool-call rounds"
+                "Weather agent is not connected. Call connect() first."
             )
+
+        # Add user message to conversation
+        self._history.append(
+            HumanMessage(content=message)
+        )
+
+        # Execute graph
+        result = await self._graph.ainvoke(
+            {
+                "messages": self._history
+            },
+            config={
+                "recursion_limit": (
+                    self._settings.max_tool_rounds * 2 + 5
+                )
+            }
+        )
+
+        # Update conversation history
+        self._history = result["messages"]
+
+        # Return final response
+        final_message = self._history[-1]
+
+        return final_message.content
+
+    async def close(self) -> None:
+        """Disconnect MCP server."""
+
+        await self._mcp.disconnect()

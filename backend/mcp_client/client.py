@@ -5,7 +5,7 @@ Supports two transports:
   - connect_remote_mcp_server(): connect to a remote server over streamable HTTP
 
 Tool *discovery* lives here; schema conversion and execution live in
-tool_manager.py / tool_executor.py.
+langchain_adapter.py / tool_executor.py.
 """
 
 from __future__ import annotations
