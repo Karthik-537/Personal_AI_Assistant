@@ -1,8 +1,11 @@
 """MCP client: owns the connection to one MCP server.
 
-Wraps stdio_client + ClientSession in an async context manager so callers
-get a ready-to-use session. Tool *discovery* lives here; schema conversion
-and execution live in tool_manager.py / tool_executor.py.
+Supports two transports:
+  - connect_local_mcp_server():  spawn a local server subprocess over stdio
+  - connect_remote_mcp_server(): connect to a remote server over streamable HTTP
+
+Tool *discovery* lives here; schema conversion and execution live in
+tool_manager.py / tool_executor.py.
 """
 
 from __future__ import annotations
@@ -14,23 +17,23 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class MCPClient:
-    """Connects to a single MCP server over stdio.
+    """Connects to a single MCP server (local stdio or remote HTTP).
 
     Usage:
-        client = MCPClient(params)
-        await client.connect()
+        client = MCPClient()
+        await client.connect_remote_mcp_server("https://example.com/mcp")
+        # or: await client.connect_local_mcp_server()
         tools = await client.discover_tools()
         ...
         await client.disconnect()
     """
 
-    def __init__(self, server_params: Optional[StdioServerParameters] = None):
+    def __init__(self, server_params: StdioServerParameters | None = None):
         self._params = server_params
         self.session: ClientSession | None = None
         self._tools: list[Tool] | None = None
@@ -38,8 +41,12 @@ class MCPClient:
 
     async def connect_local_mcp_server(self) -> None:
         """Spawn the server subprocess and perform the MCP handshake."""
+        if self._params is None:
+            raise RuntimeError(
+                "connect_local_mcp_server requires StdioServerParameters"
+            )
         logger.info(
-            "Connecting to MCP server: %s %s",
+            "Connecting to local MCP server: %s %s",
             self._params.command,
             " ".join(self._params.args),
         )
@@ -54,12 +61,8 @@ class MCPClient:
         self._tools = None
 
     async def connect_remote_mcp_server(self, url: str) -> None:
-        """Spawn the server subprocess and perform the MCP handshake."""
-        logger.info(
-            "Connecting to MCP server: %s %s",
-            self._params.command,
-            " ".join(self._params.args),
-        )
+        """Connect to a remote MCP server over streamable HTTP."""
+        logger.info("Connecting to remote MCP server: %s", url)
         read, write, _ = await self._exit_stack.enter_async_context(
             streamablehttp_client(url=url)
         )
@@ -71,17 +74,10 @@ class MCPClient:
         self._tools = None
 
     async def disconnect(self) -> None:
-        """Close the session and terminate the server subprocess."""
+        """Close the session and terminate the server subprocess/connection."""
         await self._exit_stack.aclose()
         self.session = None
         self._tools = None
-
-    # async def __aenter__(self) -> "MCPClient":
-    #     await self.connect_local_mcp_server()
-    #     return self
-    #
-    # async def __aexit__(self, *exc_info) -> None:
-    #     await self.disconnect()
 
     async def discover_tools(self) -> list[Tool]:
         """Fetch tools/list once and cache the result for this connection."""

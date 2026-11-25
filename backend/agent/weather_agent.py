@@ -48,8 +48,15 @@ class WeatherAgent:
         self._history: list[types.Content] = []
 
     async def connect(self) -> None:
-        """Start the MCP server, discover tools, build Gemini declarations."""
-        await self._mcp.connect_remote_mcp_server(url="https://open-meteo.caseyjhand.com/mcp")
+        """Connect to the weather MCP server and build Gemini declarations.
+
+        Uses WEATHER_MCP_URL (remote streamable-HTTP) when configured,
+        otherwise spawns the local stdio server.
+        """
+        if self._settings.weather_mcp_url:
+            await self._mcp.connect_remote_mcp_server(self._settings.weather_mcp_url)
+        else:
+            await self._mcp.connect_local_mcp_server()
         tools = await self._mcp.discover_tools()
         self._declarations = tools_to_function_declarations(tools)
 
