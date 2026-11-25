@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -41,7 +42,7 @@ class WeatherAgent:
         # 2. Initialize existing MCP client
         self._mcp = MCPClient(
             StdioServerParameters(
-                command="python",
+                command=sys.executable,
                 args=list(settings.weather_server_args)
             )
         )
@@ -57,10 +58,13 @@ class WeatherAgent:
     async def connect(self) -> None:
         """Connect to MCP and build the LangGraph workflow."""
 
-        # Connect to weather MCP server
-        await self._mcp.connect_remote_mcp_server(
-            url=self._settings.weather_mcp_url
-        )
+        # Connect to weather MCP server (remote URL if configured, else local stdio)
+        if self._settings.weather_mcp_url:
+            await self._mcp.connect_remote_mcp_server(
+                url=self._settings.weather_mcp_url
+            )
+        else:
+            await self._mcp.connect_local_mcp_server()
 
         # Discover MCP tools
         mcp_tools = await self._mcp.discover_tools()
@@ -173,10 +177,17 @@ class WeatherAgent:
         # Update conversation history
         self._history = result["messages"]
 
-        # Return final response
+        # Return final response — Gemini content may be a str or a list of
+        # content blocks; normalize to plain text.
         final_message = self._history[-1]
-
-        return final_message.content
+        content = final_message.content
+        if isinstance(content, list):
+            return "".join(
+                block.get("text", "")
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+        return content
 
     async def close(self) -> None:
         """Disconnect MCP server."""

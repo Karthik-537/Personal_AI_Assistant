@@ -21,7 +21,7 @@ User → Python app (MCP host) → Gemini API → MCP client → MCP servers →
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 pip install -r requirements.txt
-cp .env            # then fill in GEMINI_API_KEY
+cp .env.example .env       # then fill in GEMINI_API_KEY
 ```
 
 ## Status
