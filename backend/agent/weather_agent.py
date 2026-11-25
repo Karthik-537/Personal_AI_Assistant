@@ -10,8 +10,6 @@ Loop per user message:
     -> Gemini ... until it returns plain text (the answer).
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import sys
