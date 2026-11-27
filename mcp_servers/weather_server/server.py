@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import logging
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from .weather_service import WeatherServiceError, get_forecast, search_locations
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("weather")
+mcp = MCPServer("weather")
 
 
 @mcp.tool()

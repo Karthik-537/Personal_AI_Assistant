@@ -1,17 +1,19 @@
 import logging
 import sys
+from pathlib import Path
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 from langchain.agents import create_agent
 from langchain.mcp import MCPAdapter
 
-from mcp import StdioServerParameters
+from fastmcp.client.transports import StdioTransport
 
 from backend.config import Settings
 
 
 logger = logging.getLogger(__name__)
+project_root = Path(__file__).resolve().parents[2]
 
 
 class WeatherAgent:
@@ -42,9 +44,10 @@ class WeatherAgent:
                 server=self._settings.weather_mcp_url)
         else:
             agent, adapter = await self.create_mcp_agent(
-                server=StdioServerParameters(
+                server=StdioTransport(
                     command=sys.executable,
-                    args=list(self._settings.weather_server_args)
+                    args=list(self._settings.weather_server_args),
+                    cwd=str(project_root)
                 )
             )
 
