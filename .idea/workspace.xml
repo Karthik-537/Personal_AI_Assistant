@@ -4,10 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="514a90fd-6c6f-4f3c-8331-8e4ca2b3f0e3" name="Changes" comment="Integrated langchain and langgraph">
+    <list default="true" id="514a90fd-6c6f-4f3c-8331-8e4ca2b3f0e3" name="Changes" comment="Updated requirements">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/agent/weather_agent.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/agent/weather_agent.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -38,7 +38,7 @@
   &quot;keyToString&quot;: {
     &quot;Python.main.executor&quot;: &quot;Run&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/91934/PycharmProjects/Customer_Support_AI_Agent/requirements.txt&quot;
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/91934/PycharmProjects/Customer_Support_AI_Agent&quot;
   }
 }</component>
   <component name="RunManager">
@@ -126,13 +126,22 @@
       <option name="project" value="LOCAL" />
       <updated>1795597110216</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="Updated requirements">
+      <option name="closed" value="true" />
+      <created>1795598585216</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1795598585216</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Configure MCP" />
     <MESSAGE value="Minor Changes" />
     <MESSAGE value="Integrated langchain and langgraph" />
-    <option name="LAST_COMMIT_MESSAGE" value="Integrated langchain and langgraph" />
+    <MESSAGE value="Updated requirements" />
+    <option name="LAST_COMMIT_MESSAGE" value="Updated requirements" />
   </component>
 </project>

@@ -22,28 +22,24 @@ from backend.utils.logger import setup_logging
 async def main() -> None:
     setup_logging()
     settings = Settings.from_env()
-    agent = WeatherAgent(settings)
-    await agent.connect()
     print("Weather Agent ready. Type a question, or 'quit' to exit.\n")
-    try:
-        while True:
-            try:
-                message = input("You: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                break
-            if not message:
-                continue
-            if message.lower() in {"quit", "exit"}:
-                break
-            try:
-                answer = await agent.chat(message)
-            except Exception as exc:  # noqa: BLE001 — keep REPL alive
-                print(f"Agent error: {exc}\n")
-                continue
-            print(f"Agent: {answer}\n")
-    finally:
-        await agent.close()
+    while True:
+        try:
+            message = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not message:
+            continue
+        if message.lower() in {"quit", "exit"}:
+            break
+        try:
+            agent = WeatherAgent(settings=settings)
+            answer = await agent.chat(message)
+        except Exception as exc:  # noqa: BLE001 — keep REPL alive
+            print(f"Agent error: {exc}\n")
+            continue
+        print(f"Agent: {answer}\n")
 
 
 if __name__ == "__main__":

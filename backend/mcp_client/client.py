@@ -15,7 +15,7 @@ from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import Tool
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class MCPClient:
         """Connect to a remote MCP server over streamable HTTP."""
         logger.info("Connecting to remote MCP server: %s", url)
         read, write, _ = await self._exit_stack.enter_async_context(
-            streamablehttp_client(url=url)
+            streamable_http_client(url=url)
         )
         session = await self._exit_stack.enter_async_context(
             ClientSession(read, write)
